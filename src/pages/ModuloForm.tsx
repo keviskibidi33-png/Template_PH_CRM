@@ -6,6 +6,19 @@ import { getEnsayoDetail, saveAndDownload, saveEnsayo } from '@/services/api'
 import type { PhPayload } from '@/types'
 import FormatConfirmModal from '../components/FormatConfirmModal'
 
+
+const buildFormatPreview = (sampleCode: string | undefined, materialCode: 'SU' | 'AG', ensayo: string) => {
+    const currentYear = new Date().getFullYear().toString().slice(-2)
+    const normalized = (sampleCode || '').trim().toUpperCase()
+    const fullMatch = normalized.match(/^(\d+)(?:-[A-Z0-9. ]+)?-(\d{2,4})$/)
+    const partialMatch = normalized.match(/^(\d+)(?:-(\d{2,4}))?$/)
+    const match = fullMatch || partialMatch
+    const numero = match?.[1] || 'xxxx'
+    const year = (match?.[2] || currentYear).slice(-2)
+    return `Formato N-${numero}-${materialCode}-${year} ${ensayo}`
+}
+
+
 const MODULE_TITLE = 'pH'
 const FILE_PREFIX = 'PH'
 const DRAFT_KEY = 'ph_form_draft_v2'
@@ -282,11 +295,13 @@ export default function ModuloForm() {
                 }
 
                 if (download) {
-                    const blob = await saveAndDownload(payload, ensayoId ?? undefined)
+                    const downloadResult = await saveAndDownload(payload, ensayoId ?? undefined)
+                    const blob = downloadResult instanceof Blob ? downloadResult : downloadResult.blob
+                    const filename = downloadResult instanceof Blob ? undefined : downloadResult.filename
                     const url = URL.createObjectURL(blob)
                     const a = document.createElement('a')
                     a.href = url
-                    a.download = `${FILE_PREFIX}_${form.numero_ot}_${new Date().toISOString().slice(0, 10)}.xlsx`
+                    a.download = filename || `${buildFormatPreview(form.muestra, 'SU', 'PH')}.xlsx`
                     a.click()
                     URL.revokeObjectURL(url)
                 } else {
@@ -724,7 +739,7 @@ export default function ModuloForm() {
             </div>
             <FormatConfirmModal
                 open={pendingFormatAction !== null}
-                formatLabel={`Formato N-xxxx-SU-${new Date().getFullYear().toString().slice(-2)} PH`}
+                formatLabel={buildFormatPreview(form.muestra, 'SU', 'PH')}
                 actionLabel={pendingFormatAction ? 'Guardar y Descargar' : 'Guardar'}
                 onClose={() => setPendingFormatAction(null)}
                 onConfirm={() => {
