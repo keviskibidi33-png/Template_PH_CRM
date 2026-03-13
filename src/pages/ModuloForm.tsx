@@ -10,6 +10,8 @@ const FILE_PREFIX = 'PH'
 const DRAFT_KEY = 'ph_form_draft_v2'
 const DEBOUNCE_MS = 700
 const SECADO_OPTIONS = ['', 'X'] as const
+const REVISORES = ['-', 'FABIAN LA ROSA'] as const
+const APROBADORES = ['-', 'IRMA COAQUIRA'] as const
 const HORA_ROWS = Array.from({ length: 5 }, (_, i) => i)
 
 const getCurrentYearShort = () => new Date().getFullYear().toString().slice(-2)
@@ -145,13 +147,20 @@ const initialState = (): FormState => ({
     deform_2: Array.from({ length: HORA_ROWS.length }, () => null),
     hora_3: Array.from({ length: HORA_ROWS.length }, () => ''),
     deform_3: Array.from({ length: HORA_ROWS.length }, () => null),
-    revisado_por: '',
-    aprobado_por: '',
+    revisado_por: '-',
+    aprobado_por: '-',
 })
 
 const hydrateForm = (payload?: Partial<PhPayload>): FormState => {
     const base = initialState()
     if (!payload) return base
+
+    const revisado = typeof payload.revisado_por === 'string' && payload.revisado_por.trim()
+        ? payload.revisado_por
+        : base.revisado_por
+    const aprobado = typeof payload.aprobado_por === 'string' && payload.aprobado_por.trim()
+        ? payload.aprobado_por
+        : base.aprobado_por
 
     return {
         ...base,
@@ -166,6 +175,8 @@ const hydrateForm = (payload?: Partial<PhPayload>): FormState => {
         deform_2: normalizeArray(payload.deform_2, HORA_ROWS.length, null),
         hora_3: normalizeArray(payload.hora_3, HORA_ROWS.length, ''),
         deform_3: normalizeArray(payload.deform_3, HORA_ROWS.length, null),
+        revisado_por: revisado,
+        aprobado_por: aprobado,
     }
 }
 
@@ -640,20 +651,42 @@ export default function ModuloForm() {
                         </div>
 
                         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                            {[
-                                { label: 'Realizado', key: 'realizado_por' as const },
-                                { label: 'Revisado', key: 'revisado_por' as const },
-                                { label: 'Aprobado', key: 'aprobado_por' as const },
-                            ].map((item) => (
-                                <div key={item.key} className="rounded-lg border border-slate-300 bg-white p-2">
-                                    <div className="mb-2 text-center text-xs font-semibold text-slate-800">{item.label}</div>
-                                    <input
-                                        className={denseInputClass}
-                                        value={form[item.key]}
-                                        onChange={(e) => setField(item.key, e.target.value)}
-                                    />
-                                </div>
-                            ))}
+                            <div className="rounded-lg border border-slate-300 bg-white p-2">
+                                <div className="mb-2 text-center text-xs font-semibold text-slate-800">Realizado</div>
+                                <input
+                                    className={denseInputClass}
+                                    value={form.realizado_por}
+                                    onChange={(e) => setField('realizado_por', e.target.value)}
+                                />
+                            </div>
+                            <div className="rounded-lg border border-slate-300 bg-white p-2">
+                                <div className="mb-2 text-center text-xs font-semibold text-slate-800">Revisado</div>
+                                <select
+                                    className={denseInputClass}
+                                    value={form.revisado_por}
+                                    onChange={(e) => setField('revisado_por', e.target.value)}
+                                >
+                                    {REVISORES.map((opt) => (
+                                        <option key={opt} value={opt}>
+                                            {opt}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="rounded-lg border border-slate-300 bg-white p-2">
+                                <div className="mb-2 text-center text-xs font-semibold text-slate-800">Aprobado</div>
+                                <select
+                                    className={denseInputClass}
+                                    value={form.aprobado_por}
+                                    onChange={(e) => setField('aprobado_por', e.target.value)}
+                                >
+                                    {APROBADORES.map((opt) => (
+                                        <option key={opt} value={opt}>
+                                            {opt}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
