@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { Beaker, Download, Loader2, Trash2 } from 'lucide-react'
@@ -24,9 +24,6 @@ const FILE_PREFIX = 'PH'
 const DRAFT_KEY = 'ph_form_draft_v2'
 const DEBOUNCE_MS = 700
 const SECADO_OPTIONS = ['', 'X'] as const
-const REVISORES = ['-', 'FABIAN LA ROSA'] as const
-const APROBADORES = ['-', 'IRMA COAQUIRA'] as const
-const HORA_ROWS = Array.from({ length: 5 }, (_, i) => i)
 
 const getCurrentYearShort = () => new Date().getFullYear().toString().slice(-2)
 
@@ -86,20 +83,6 @@ const parseNum = (value: string) => {
     return Number.isFinite(parsed) ? parsed : null
 }
 
-const round = (value: number, decimals = 4) => {
-    const factor = 10 ** decimals
-    return Math.round(value * factor) / factor
-}
-
-const normalizeArray = <T,>(value: T[] | undefined, length: number, fallback: T): T[] => {
-    const result = Array.from({ length }, () => fallback)
-    if (!value) return result
-    value.slice(0, length).forEach((item, idx) => {
-        result[idx] = item
-    })
-    return result
-}
-
 const getEnsayoId = () => {
     const raw = new URLSearchParams(window.location.search).get('ensayo_id')
     const n = Number(raw)
@@ -115,21 +98,14 @@ type FormState = {
     condicion_secado_horno: string
     temperatura_ensayo_c: number | null
     ph_resultado: number | null
-    recipiente_numero: string
-    peso_recipiente_g: number | null
-    peso_recipiente_suelo_humedo_g: number | null
-    peso_recipiente_suelo_seco_g: number | null
-    peso_agua_g: number | null
-    peso_suelo_g: number | null
-    contenido_humedad_pct: number | null
-    hora_1: string[]
-    deform_1: Array<number | null>
-    hora_2: string[]
-    deform_2: Array<number | null>
-    hora_3: string[]
-    deform_3: Array<number | null>
+    observaciones: string
+    equipo_horno_codigo: string
+    equipo_balanza_001_codigo: string
+    equipo_ph_metro_codigo: string
     revisado_por: string
+    revisado_fecha: string
     aprobado_por: string
+    aprobado_fecha: string
 }
 
 const initialState = (): FormState => ({
@@ -141,33 +117,19 @@ const initialState = (): FormState => ({
     condicion_secado_horno: '',
     temperatura_ensayo_c: null,
     ph_resultado: null,
-    recipiente_numero: '',
-    peso_recipiente_g: null,
-    peso_recipiente_suelo_humedo_g: null,
-    peso_recipiente_suelo_seco_g: null,
-    peso_agua_g: null,
-    peso_suelo_g: null,
-    contenido_humedad_pct: null,
-    hora_1: Array.from({ length: HORA_ROWS.length }, () => ''),
-    deform_1: Array.from({ length: HORA_ROWS.length }, () => null),
-    hora_2: Array.from({ length: HORA_ROWS.length }, () => ''),
-    deform_2: Array.from({ length: HORA_ROWS.length }, () => null),
-    hora_3: Array.from({ length: HORA_ROWS.length }, () => ''),
-    deform_3: Array.from({ length: HORA_ROWS.length }, () => null),
-    revisado_por: '-',
-    aprobado_por: '-',
+    observaciones: '',
+    equipo_horno_codigo: '',
+    equipo_balanza_001_codigo: '',
+    equipo_ph_metro_codigo: '',
+    revisado_por: '',
+    revisado_fecha: '',
+    aprobado_por: '',
+    aprobado_fecha: '',
 })
 
 const hydrateForm = (payload?: Partial<PhPayload>): FormState => {
     const base = initialState()
     if (!payload) return base
-
-    const revisado = typeof payload.revisado_por === 'string' && payload.revisado_por.trim()
-        ? payload.revisado_por
-        : base.revisado_por
-    const aprobado = typeof payload.aprobado_por === 'string' && payload.aprobado_por.trim()
-        ? payload.aprobado_por
-        : base.aprobado_por
 
     return {
         ...base,
@@ -176,14 +138,14 @@ const hydrateForm = (payload?: Partial<PhPayload>): FormState => {
         condicion_secado_horno: payload.condicion_secado_horno ?? base.condicion_secado_horno,
         temperatura_ensayo_c: payload.temperatura_ensayo_c ?? base.temperatura_ensayo_c,
         ph_resultado: payload.ph_resultado ?? base.ph_resultado,
-        hora_1: normalizeArray(payload.hora_1, HORA_ROWS.length, ''),
-        deform_1: normalizeArray(payload.deform_1, HORA_ROWS.length, null),
-        hora_2: normalizeArray(payload.hora_2, HORA_ROWS.length, ''),
-        deform_2: normalizeArray(payload.deform_2, HORA_ROWS.length, null),
-        hora_3: normalizeArray(payload.hora_3, HORA_ROWS.length, ''),
-        deform_3: normalizeArray(payload.deform_3, HORA_ROWS.length, null),
-        revisado_por: revisado,
-        aprobado_por: aprobado,
+        observaciones: payload.observaciones ?? base.observaciones,
+        equipo_horno_codigo: payload.equipo_horno_codigo ?? base.equipo_horno_codigo,
+        equipo_balanza_001_codigo: payload.equipo_balanza_001_codigo ?? base.equipo_balanza_001_codigo,
+        equipo_ph_metro_codigo: payload.equipo_ph_metro_codigo ?? base.equipo_ph_metro_codigo,
+        revisado_por: payload.revisado_por ?? base.revisado_por,
+        revisado_fecha: payload.revisado_fecha ?? base.revisado_fecha,
+        aprobado_por: payload.aprobado_por ?? base.aprobado_por,
+        aprobado_fecha: payload.aprobado_fecha ?? base.aprobado_fecha,
     }
 }
 
@@ -237,45 +199,11 @@ export default function ModuloForm() {
         setForm((prev) => ({ ...prev, [key]: value }))
     }, [])
 
-    const setArrayNumberField = useCallback(
-        (key: 'deform_1' | 'deform_2' | 'deform_3', index: number, value: number | null) => {
-            setForm((prev) => {
-                const arr = [...prev[key]]
-                arr[index] = value
-                return { ...prev, [key]: arr }
-            })
-        },
-        [],
-    )
-
-    const setArrayTextField = useCallback((key: 'hora_1' | 'hora_2' | 'hora_3', index: number, value: string) => {
-        setForm((prev) => {
-            const arr = [...prev[key]]
-            arr[index] = value
-            return { ...prev, [key]: arr }
-        })
-    }, [])
-
     const clearAll = useCallback(() => {
         if (!window.confirm('Se limpiaran los datos no guardados. Deseas continuar?')) return
         localStorage.removeItem(`${DRAFT_KEY}:${ensayoId ?? 'new'}`)
         setForm(initialState())
     }, [ensayoId])
-
-    const computedPesoAgua = useMemo(() => {
-        if (form.peso_recipiente_suelo_humedo_g == null || form.peso_recipiente_suelo_seco_g == null) return null
-        return round(form.peso_recipiente_suelo_humedo_g - form.peso_recipiente_suelo_seco_g)
-    }, [form.peso_recipiente_suelo_humedo_g, form.peso_recipiente_suelo_seco_g])
-
-    const computedPesoSuelo = useMemo(() => {
-        if (form.peso_recipiente_suelo_seco_g == null || form.peso_recipiente_g == null) return null
-        return round(form.peso_recipiente_suelo_seco_g - form.peso_recipiente_g)
-    }, [form.peso_recipiente_suelo_seco_g, form.peso_recipiente_g])
-
-    const computedHumedad = useMemo(() => {
-        if (computedPesoAgua == null || computedPesoSuelo == null || computedPesoSuelo === 0) return null
-        return round((computedPesoAgua / computedPesoSuelo) * 100, 3)
-    }, [computedPesoAgua, computedPesoSuelo])
     const [pendingFormatAction, setPendingFormatAction] = useState<boolean | null>(null)
 
 
@@ -289,9 +217,6 @@ export default function ModuloForm() {
             try {
                 const payload: PhPayload = {
                     ...form,
-                    peso_agua_g: form.peso_agua_g ?? computedPesoAgua,
-                    peso_suelo_g: form.peso_suelo_g ?? computedPesoSuelo,
-                    contenido_humedad_pct: form.contenido_humedad_pct ?? computedHumedad,
                 }
 
                 if (download) {
@@ -324,15 +249,11 @@ export default function ModuloForm() {
         [
             ensayoId,
             form,
-            computedPesoAgua,
-            computedPesoSuelo,
-            computedHumedad,
         ],
     )
 
     const denseInputClass =
         'h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900 shadow-sm transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-500/35'
-    const readOnlyInputClass = 'h-8 w-full rounded-md border border-slate-200 bg-slate-100 px-2 text-sm text-slate-800'
 
     return (
         <div className="min-h-screen bg-slate-100 p-4 md:p-6">
@@ -425,7 +346,7 @@ export default function ModuloForm() {
                     </div>
 
                     <div className="p-3">
-                        <div className="mb-4 w-full max-w-md overflow-hidden rounded-lg border border-slate-300">
+                        <div className="mx-auto mb-5 w-full max-w-[340px] overflow-hidden rounded-lg border border-slate-300">
                             <div className="border-b border-slate-300 bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-800 text-center">
                                 CONDICIONES DE SECADO
                             </div>
@@ -456,7 +377,7 @@ export default function ModuloForm() {
                             </table>
                         </div>
 
-                        <div className="mb-4 overflow-hidden rounded-lg border border-slate-300">
+                        <div className="mx-auto mb-6 w-full max-w-[530px] overflow-hidden rounded-lg border border-slate-300">
                             <div className="border-b border-slate-300 bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-800 text-center">
                                 RESULTADOS DE ENSAYO
                             </div>
@@ -492,167 +413,41 @@ export default function ModuloForm() {
                             </table>
                         </div>
 
-                        <div className="mt-4 rounded-lg border border-slate-300 p-2">
-                            <div className="mb-2 text-center text-xs font-semibold text-slate-800">
-                                CONTENIDO DE HUMEDAD - NTP 339.127
-                            </div>
-                            <table className="w-full table-fixed text-sm">
-                                <colgroup>
-                                    <col className="w-10" />
-                                    <col />
-                                    <col className="w-20" />
-                                    <col className="w-44" />
-                                </colgroup>
-                                <tbody>
-                                    {[
-                                        {
-                                            key: '1',
-                                            label: 'N° del recipiente',
-                                            unit: '',
-                                            value: form.recipiente_numero,
-                                            onChange: (value: string) => setField('recipiente_numero', value),
-                                            type: 'text',
-                                        },
-                                        {
-                                            key: '2',
-                                            label: 'Peso del recipiente',
-                                            unit: '(g)',
-                                            value: form.peso_recipiente_g,
-                                            onChange: (value: number | null) => setField('peso_recipiente_g', value),
-                                        },
-                                        {
-                                            key: '3',
-                                            label: 'peso del recipiente + Suelo humedo',
-                                            unit: '(g)',
-                                            value: form.peso_recipiente_suelo_humedo_g,
-                                            onChange: (value: number | null) =>
-                                                setField('peso_recipiente_suelo_humedo_g', value),
-                                        },
-                                        {
-                                            key: '4',
-                                            label: 'Peso de recipiente + suelo seco',
-                                            unit: '(g)',
-                                            value: form.peso_recipiente_suelo_seco_g,
-                                            onChange: (value: number | null) => setField('peso_recipiente_suelo_seco_g', value),
-                                        },
-                                        {
-                                            key: '5',
-                                            label: 'Peso del agua  (3)-(4)',
-                                            unit: '(g)',
-                                            value: form.peso_agua_g ?? computedPesoAgua,
-                                            readOnly: true,
-                                        },
-                                        {
-                                            key: '6',
-                                            label: 'peso del suelo (4)-(2)',
-                                            unit: '(g)',
-                                            value: form.peso_suelo_g ?? computedPesoSuelo,
-                                            readOnly: true,
-                                        },
-                                        {
-                                            key: '7',
-                                            label: 'contenido de humedad (5)/(6) * 100',
-                                            unit: '(%)',
-                                            value: form.contenido_humedad_pct ?? computedHumedad,
-                                            readOnly: true,
-                                        },
-                                    ].map((row) => (
-                                        <tr key={row.key}>
-                                            <td className="border-t border-r border-slate-300 px-2 py-1 text-xs text-center">
-                                                {row.key}
-                                            </td>
-                                            <td className="border-t border-r border-slate-300 px-2 py-1 text-xs">{row.label}</td>
-                                            <td className="border-t border-r border-slate-300 px-2 py-1 text-center text-xs">
-                                                {row.unit}
-                                            </td>
-                                            <td className="border-t border-slate-300 p-1">
-                                                {row.type === 'text' ? (
-                                                    <input
-                                                        className={denseInputClass}
-                                                        value={row.value as string}
-                                                        onChange={(e) => row.onChange?.(e.target.value)}
-                                                    />
-                                                ) : (
-                                                    <input
-                                                        type="number"
-                                                        step="any"
-                                                        className={row.readOnly ? readOnlyInputClass : denseInputClass}
-                                                        value={(row.value as number | null) ?? ''}
-                                                        onChange={(e) => {
-                                                            if (row.readOnly) return
-                                                            row.onChange?.(parseNum(e.target.value))
-                                                        }}
-                                                        readOnly={row.readOnly}
-                                                    />
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                        <div className="mx-auto mb-5 w-full max-w-[760px] rounded-lg border border-slate-300 bg-white p-3">
+                            <div className="mb-2 text-xs font-semibold text-slate-800">Observaciones:</div>
+                            <textarea
+                                className="w-full resize-none rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm transition focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-500/35"
+                                rows={2}
+                                value={form.observaciones}
+                                onChange={(e) => setField('observaciones', e.target.value)}
+                                autoComplete="off"
+                                data-lpignore="true"
+                            />
                         </div>
 
-                        <div className="mt-4 rounded-lg border border-slate-300">
+                        <div className="mx-auto mb-5 w-full max-w-[430px] overflow-hidden rounded-lg border border-slate-300">
                             <table className="w-full table-fixed text-sm">
                                 <thead className="bg-slate-100 text-xs font-semibold text-slate-800">
                                     <tr>
-                                        <th className="border-b border-r border-slate-300 py-1">Hora</th>
-                                        <th className="border-b border-r border-slate-300 py-1">Deform. #1</th>
-                                        <th className="border-b border-r border-slate-300 py-1">Hora</th>
-                                        <th className="border-b border-r border-slate-300 py-1">Deform. #2</th>
-                                        <th className="border-b border-r border-slate-300 py-1">Hora</th>
-                                        <th className="border-b border-slate-300 py-1">Deform. #3</th>
+                                        <th className="border-b border-r border-slate-300 py-1">Equipo utilizado</th>
+                                        <th className="border-b border-slate-300 py-1">Código</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {HORA_ROWS.map((rowIdx) => (
-                                        <tr key={rowIdx}>
-                                            <td className="border-t border-r border-slate-300 p-1">
-                                                <input
-                                                    className={denseInputClass}
-                                                    value={form.hora_1[rowIdx]}
-                                                    onChange={(e) => setArrayTextField('hora_1', rowIdx, e.target.value)}
-                                                />
-                                            </td>
-                                            <td className="border-t border-r border-slate-300 p-1">
-                                                <input
-                                                    type="number"
-                                                    step="any"
-                                                    className={denseInputClass}
-                                                    value={form.deform_1[rowIdx] ?? ''}
-                                                    onChange={(e) => setArrayNumberField('deform_1', rowIdx, parseNum(e.target.value))}
-                                                />
-                                            </td>
-                                            <td className="border-t border-r border-slate-300 p-1">
-                                                <input
-                                                    className={denseInputClass}
-                                                    value={form.hora_2[rowIdx]}
-                                                    onChange={(e) => setArrayTextField('hora_2', rowIdx, e.target.value)}
-                                                />
-                                            </td>
-                                            <td className="border-t border-r border-slate-300 p-1">
-                                                <input
-                                                    type="number"
-                                                    step="any"
-                                                    className={denseInputClass}
-                                                    value={form.deform_2[rowIdx] ?? ''}
-                                                    onChange={(e) => setArrayNumberField('deform_2', rowIdx, parseNum(e.target.value))}
-                                                />
-                                            </td>
-                                            <td className="border-t border-r border-slate-300 p-1">
-                                                <input
-                                                    className={denseInputClass}
-                                                    value={form.hora_3[rowIdx]}
-                                                    onChange={(e) => setArrayTextField('hora_3', rowIdx, e.target.value)}
-                                                />
-                                            </td>
+                                    {[
+                                        { label: 'Horno', key: 'equipo_horno_codigo' as const },
+                                        { label: 'Balanza 0.01', key: 'equipo_balanza_001_codigo' as const },
+                                        { label: 'PH-Metro', key: 'equipo_ph_metro_codigo' as const },
+                                    ].map((row) => (
+                                        <tr key={row.key}>
+                                            <td className="border-t border-r border-slate-300 px-2 py-1 text-xs">{row.label}</td>
                                             <td className="border-t border-slate-300 p-1">
                                                 <input
-                                                    type="number"
-                                                    step="any"
                                                     className={denseInputClass}
-                                                    value={form.deform_3[rowIdx] ?? ''}
-                                                    onChange={(e) => setArrayNumberField('deform_3', rowIdx, parseNum(e.target.value))}
+                                                    value={form[row.key]}
+                                                    onChange={(e) => setField(row.key, e.target.value)}
+                                                    autoComplete="off"
+                                                    data-lpignore="true"
                                                 />
                                             </td>
                                         </tr>
@@ -661,42 +456,46 @@ export default function ModuloForm() {
                             </table>
                         </div>
 
-                        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                            <div className="rounded-lg border border-slate-300 bg-white p-2">
-                                <div className="mb-2 text-center text-xs font-semibold text-slate-800">Realizado</div>
+                        <div className="mx-auto mt-6 grid max-w-[760px] grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="rounded-lg border border-slate-300 bg-white p-3">
+                                <div className="mb-3 text-xl leading-none text-slate-900">Revisado:</div>
                                 <input
-                                    className={denseInputClass}
-                                    value={form.realizado_por}
-                                    onChange={(e) => setField('realizado_por', e.target.value)}
-                                />
-                            </div>
-                            <div className="rounded-lg border border-slate-300 bg-white p-2">
-                                <div className="mb-2 text-center text-xs font-semibold text-slate-800">Revisado</div>
-                                <select
                                     className={denseInputClass}
                                     value={form.revisado_por}
                                     onChange={(e) => setField('revisado_por', e.target.value)}
-                                >
-                                    {REVISORES.map((opt) => (
-                                        <option key={opt} value={opt}>
-                                            {opt}
-                                        </option>
-                                    ))}
-                                </select>
+                                    autoComplete="off"
+                                    data-lpignore="true"
+                                />
+                                <div className="mb-3 mt-4 text-xl leading-none text-slate-900">Fecha:</div>
+                                <input
+                                    className={denseInputClass}
+                                    value={form.revisado_fecha}
+                                    onChange={(e) => setField('revisado_fecha', e.target.value)}
+                                    onBlur={() => setField('revisado_fecha', normalizeFlexibleDate(form.revisado_fecha))}
+                                    autoComplete="off"
+                                    data-lpignore="true"
+                                    placeholder="DD/MM/AA"
+                                />
                             </div>
-                            <div className="rounded-lg border border-slate-300 bg-white p-2">
-                                <div className="mb-2 text-center text-xs font-semibold text-slate-800">Aprobado</div>
-                                <select
+                            <div className="rounded-lg border border-slate-300 bg-white p-3">
+                                <div className="mb-3 text-xl leading-none text-slate-900">Aprobado:</div>
+                                <input
                                     className={denseInputClass}
                                     value={form.aprobado_por}
                                     onChange={(e) => setField('aprobado_por', e.target.value)}
-                                >
-                                    {APROBADORES.map((opt) => (
-                                        <option key={opt} value={opt}>
-                                            {opt}
-                                        </option>
-                                    ))}
-                                </select>
+                                    autoComplete="off"
+                                    data-lpignore="true"
+                                />
+                                <div className="mb-3 mt-4 text-xl leading-none text-slate-900">Fecha:</div>
+                                <input
+                                    className={denseInputClass}
+                                    value={form.aprobado_fecha}
+                                    onChange={(e) => setField('aprobado_fecha', e.target.value)}
+                                    onBlur={() => setField('aprobado_fecha', normalizeFlexibleDate(form.aprobado_fecha))}
+                                    autoComplete="off"
+                                    data-lpignore="true"
+                                    placeholder="DD/MM/AA"
+                                />
                             </div>
                         </div>
 

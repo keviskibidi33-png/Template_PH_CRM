@@ -25,7 +25,9 @@ export type PhPayload = {
     equipo_balanza_001_codigo?: string
     equipo_ph_metro_codigo?: string
     revisado_por?: string
+    revisado_fecha?: string
     aprobado_por?: string
+    aprobado_fecha?: string
     [key: string]: unknown
 }
 
